@@ -66,6 +66,7 @@ def is_bear(open, close, high, low):
 
     return "No match Could be found!!!"
 
+
 def fib_retracement(high, low):
     ranges = high - low
     red = (ranges * 0.236) + low
@@ -74,16 +75,23 @@ def fib_retracement(high, low):
     green = (ranges * 0.618) + low
     teal = (ranges * 0.786) + low
     fib_nums = [red, oj, mid, green, teal]
+
     return fib_nums
 
+def establish_dataframe(data):
+    data = pd.DataFrame(data)
+
+    data["date"] = pd.to_datetime(data["date"])
+    data.set_index(["date"], inplace=True)
+
+    data["pattern"] = [pattern(row) for _, row in data.iterrows()]
+    data["pattern"] = data["pattern"].astype(str)
+    
+    return data
+
 data = pd.read_json(r"testing_data/ACHR.json")
-data = pd.DataFrame(data)
 
-data["date"] = pd.to_datetime(data["date"])
-data.set_index(["date"], inplace=True)
-
-data["pattern"] = [pattern(row) for _, row in data.iterrows()]
-data["pattern"] = data["pattern"].astype(str)
+data = establish_dataframe(data)
 
 highlight = data[data["volume"] >= data["volume"].quantile(0.9)]
 highlight = highlight.reindex(data.index)
@@ -94,6 +102,6 @@ ap = mpf.make_addplot(highlight["close"], scatter=True, marker=".", color="blue"
 
 mpf.plot(data, type="candle", style="charles", title="Candle Stick Chart", ylabel="price", addplot=ap)
 
-# hline = mpf.make_addplot([volume_max] * len(data), color="green", linestyle="dashed", secondary_y=False)
+# hlind = mpf.make_addplot([volume_max] * len(data), color="green", linestyle="dashed", secondary_y=False)
 # mpf.plot(data[["volume"]], type="line", title="Volume Chart", ylabel="volume", addplot=hline)
 

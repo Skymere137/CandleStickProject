@@ -66,6 +66,30 @@ def is_bear(open, close, high, low):
 
     return "No match Could be found!!!"
 
+def establish_trend(dataframe_row):
+    trend = ""
+    last_num = 0
+    bull_trend = 0
+    bear_trend = 0
+    n = 5
+    for index in dataframe_row:
+        if index > last_num:
+            bull_trend += 1
+            bear_trend = 0
+        if index < last_num:
+            bear_trend += 1
+            bull_trend = 0
+        if index == last_num:
+            continue
+        if bull_trend > n:
+            trend = "Bullish"
+        elif bear_trend > n:
+            trend = "Bearish"
+        else:
+            trend = ""
+        print(last_num, index, trend)
+        last_num = index
+    return trend
 
 def fib_retracement(high, low):
     ranges = high - low
@@ -85,6 +109,7 @@ def establish_dataframe(data):
     data.set_index(["date"], inplace=True)
 
     data["pattern"] = [pattern(row) for _, row in data.iterrows()]
+    data["mvAvg"] = data["close"].rolling(20).mean()
     data["pattern"] = data["pattern"].astype(str)
     
     return data
@@ -93,14 +118,16 @@ data = pd.read_json(r"testing_data/ACHR.json")
 
 data = establish_dataframe(data)
 
-highlight = data[data["volume"] >= data["volume"].quantile(0.9)]
-highlight = highlight.reindex(data.index)
+establish_trend(data["mvAvg"])
 
-volume_max = float(data["volume"].median())
+# highlight = data[data["volume"] >= data["volume"].quantile(0.9)]
+# highlight = highlight.reindex(data.index)
 
-ap = mpf.make_addplot(highlight["close"], scatter=True, marker=".", color="blue", markersize=100)
+# volume_max = float(data["volume"].median())
 
-mpf.plot(data, type="candle", style="charles", title="Candle Stick Chart", ylabel="price", addplot=ap)
+# ap = mpf.make_addplot(highlight["close"], scatter=True, marker=".", color="blue", markersize=100)
+
+# mpf.plot(data, type="candle", style="charles", title="Candle Stick Chart", ylabel="price", addplot=ap)
 
 # hlind = mpf.make_addplot([volume_max] * len(data), color="green", linestyle="dashed", secondary_y=False)
 # mpf.plot(data[["volume"]], type="line", title="Volume Chart", ylabel="volume", addplot=hline)

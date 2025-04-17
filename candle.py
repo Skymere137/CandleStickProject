@@ -1,134 +1,67 @@
 import pandas as pd
+import numpy as np
 import json
 import os
+from custom_queue import Queue
 import mplfinance as mpf
-import candle_utils
+import matplotlib.pyplot as plt
 
+class EstablishDataframe:
+    def __init__(self, data, window=4, rvol_window=20):
+        self.data = data
+        self.data = pd.read_json(self.data)
+        self.data = pd.DataFrame(self.data)
+        self.data["date"] = pd.to_datetime(self.data["date"])
+        self.data.set_index(["date"], inplace=True)
+        self.queue = Queue(5)
+        self.data = self.data_margin(self.data)
+        self.window_size = pd.Timedelta(days=window)
+        self.rvol_window = pd.Timedelta(days=rvol_window)
 
-def pattern(row):
-    open = row["open"]
-    close = row["close"]
-    high = row["high"]
-    low = row["low"]
-    volume = row["volume"]
-    result = ""
-    bullish = None
-    bullish_patterns_funcs = [is_bull]
-    bearish_patterns_funcs = [is_bear]
+        for index in self.data.index:
+            window_start = index - self.window_size
+            window_data = self.data.loc[window_start:index, "close"]
+            self.data.at[index, "mvAvg"] = window_data.mean()
+            self.data["EMA"] = self.data["close"].ewm(span=window, adjust=False).mean()
+            if self.queue.values:
+                self.data.at[index, "RoC"] = self.calculate_roc(self.data.loc[index, "EMA"], self.queue.values[-1]["EMA"])
+            else:
+                self.data.at[index, "RoC"] = 0
 
-    if open < close:
-        bullish = True
-    if open > close:
-        bullish = False
-    
-    if bullish is True:
-        for func in bullish_patterns_funcs:
-            return func(open, close, high, low)
+            rvol_start = index - self.rvol_window
+            rvol_data = self.data.loc[rvol_start:index, "volume"]
+            avg_vol = rvol_data.mean()
+            self.data.at[index, "rVol"] = self.calculate_rvol(self.data.loc[index, "volume"], avg_vol)
+            if self.queue.values:
+                self.data.at[index, "x_day_high"] = self.queue.max_value("high", 4)
+
+            self.queue.enqueue(self.data.loc[index])
+
         
-    if bullish is False:
-        for func in bearish_patterns_funcs:
-            return func(open, close, high, low)
-
-    elif bullish is None:
-        return "Doji"
-    
-def is_bull(open, close, high, low):
-    try:
-        star_ratio = (open - low) / (close - open)
-        full_ratio = (close - open) / ((high - close) + (open- low))
-    except ZeroDivisionError:
-        star_ratio = float("inf")
-        full_ratio = float("inf")
-
-    if star_ratio > 10:
-        return "Possible Doji" 
-    if star_ratio > 3:      
-        return "Bullish Star"
-    if full_ratio> 5:
-        return "Bullish Full"
-    
-    return "No match Could be found!!!"
         
-def is_bear(open, close, high, low):
-    try:
-        star_ratio = ((high - open) / (open - close))
-        full_ratio = ((open - close) / ((high - open) + (close - low)))
-    except ZeroDivisionError:
-        star_ratio = float("inf")
-        full_ratio = float("inf")
-
-    if star_ratio > 10:
-        return "Possible Doji"
-    if star_ratio > 3:
-        return "Bearish Star"
-    if full_ratio > 5:
-        return "Bearish Full"
-
-    return "No match Could be found!!!"
-
-def establish_trend(dataframe_row):
-    trend = ""
-    last_num = 0
-    bull_trend = 0
-    bear_trend = 0
-    n = 5
-    for index in dataframe_row:
-        if index > last_num:
-            bull_trend += 1
-            bear_trend = 0
-        if index < last_num:
-            bear_trend += 1
-            bull_trend = 0
-        if index == last_num:
-            continue
-        if bull_trend > n:
-            trend = "Bullish"
-        elif bear_trend > n:
-            trend = "Bearish"
-        else:
-            trend = ""
-        print(last_num, index, trend)
-        last_num = index
-    return trend
-
-def fib_retracement(high, low):
-    ranges = high - low
-    red = (ranges * 0.236) + low
-    oj = (ranges * 0.382) + low
-    mid = (ranges * 0.5) + low
-    green = (ranges * 0.618) + low
-    teal = (ranges * 0.786) + low
-    fib_nums = [red, oj, mid, green, teal]
-
-    return fib_nums
-
-def establish_dataframe(data):
-    data = pd.DataFrame(data)
-
-    data["date"] = pd.to_datetime(data["date"])
-    data.set_index(["date"], inplace=True)
-
-    data["pattern"] = [pattern(row) for _, row in data.iterrows()]
-    data["mvAvg"] = data["close"].rolling(20).mean()
-    data["pattern"] = data["pattern"].astype(str)
+    def data_margin(self, dataframe):
+        try: 
+            dataframe = dataframe.loc["2024-01-14": "2025-03-29"]  
+            return dataframe
+        except:
+            return None
     
-    return data
+    def bull_or_bear(self, _open, _close):
+        try:
+            if _open < _close:
+                return True
+            if _close < _open:
+                return False
+            
+        except TypeError as e:
+            print(e)
+            return None
 
-data = pd.read_json(r"testing_data/ACHR.json")
+    def calculate_roc(self, current_value, prev_value):
+        
+        return ((current_value - prev_value) / prev_value) * 100
 
-data = establish_dataframe(data)
+    def calculate_rvol(self, current_vol, avg_vol):
+        return current_vol/avg_vol
 
-establish_trend(data["mvAvg"])
-
-# highlight = data[data["volume"] >= data["volume"].quantile(0.9)]
-# highlight = highlight.reindex(data.index)
-
-# volume_max = float(data["volume"].median())
-
-# ap = mpf.make_addplot(highlight["close"], scatter=True, marker=".", color="blue", markersize=100)
-
-# mpf.plot(data, type="candle", style="charles", title="Candle Stick Chart", ylabel="price", addplot=ap)
-
-# hlind = mpf.make_addplot([volume_max] * len(data), color="green", linestyle="dashed", secondary_y=False)
-# mpf.plot(data[["volume"]], type="line", title="Volume Chart", ylabel="volume", addplot=hline)
 
